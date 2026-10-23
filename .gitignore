@@ -2,3 +2,5 @@ node_modules/
 dist/
 data/
 .env
+# Local-only secrets (e.g. the push signing key). Never commit these.
+*.local.*

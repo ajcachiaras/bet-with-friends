@@ -356,4 +356,16 @@ export const api = {
     await run(supabase.from('comments').insert({ bet_id: id, body: body.trim() }));
     return api.bet(id);
   },
+
+  // ---------- Push notifications ----------
+
+  async savePushSubscription(target: { endpoint: string; p256dh: string; auth: string }): Promise<void> {
+    await run(
+      supabase.rpc('save_push_subscription', { p_endpoint: target.endpoint, p_p256dh: target.p256dh, p_auth: target.auth }),
+    );
+  },
+
+  async deletePushSubscription(endpoint: string): Promise<void> {
+    await run(supabase.rpc('delete_push_subscription', { p_endpoint: endpoint }));
+  },
 };

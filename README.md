@@ -8,6 +8,7 @@ A social app for making friendly bets with your crew and keeping score. Bets are
 - **Odds.** Each side can put up a different stake, and the winner collects the loser's. Back a long shot by risking 10 to win 50.
 - **Results.** Either person reports the result and the other confirms it. Admitting you lost settles the bet straight away, and a disputed result goes back for another report.
 - **Social.** Each bet has a comment thread, each group has a leaderboard (net points and win/loss record), and the home screen shows a "Your move" list of what's waiting on you.
+- **App and notifications.** Add it to your home screen and it opens like an app, even offline. Turn on notifications (Profile) to hear when someone bets you, takes your bet, reports a result or comments. On iPhone, notifications work once it's on the Home Screen (iOS 16.4+).
 
 Live at **https://ajcachiaras.github.io/bet-with-friends/**
 
@@ -16,6 +17,7 @@ Live at **https://ajcachiaras.github.io/bet-with-friends/**
 - **Front end:** React + Vite, a static site hosted on GitHub Pages. Every push to `main` redeploys it (`.github/workflows/deploy.yml`).
 - **Back end:** [Supabase](https://supabase.com) (Postgres + accounts). There's no server of our own: the browser talks to Supabase directly.
 - **Security:** row level security in [`supabase/migrations`](supabase/migrations) means you only ever see groups you're in. Every change to a group or bet goes through database functions that enforce the rules (only the opponent can accept, nobody confirms their own result, and so on).
+- **Notifications:** database triggers queue a message for each person who should hear about a change, then ping the `send-push` Edge Function ([`supabase/functions/send-push`](supabase/functions/send-push/index.ts)), which sends them with Web Push. A service worker (`web/public/sw.js`) shows them and keeps the app working offline.
 
 ## Setting up a Supabase project
 
@@ -25,6 +27,11 @@ Live at **https://ajcachiaras.github.io/bet-with-friends/**
 4. **Authentication → URL Configuration:** set **Site URL** to the GitHub Pages address.
 5. Copy the **Project URL** and **publishable key** (the **Connect** button, or **Project Settings → API Keys**) into [`web/src/config.ts`](web/src/config.ts). Both are safe to commit. Never commit the secret key or the database password.
 6. On GitHub: **Settings → Pages → Source: GitHub Actions**.
+7. **Notifications:**
+   - Generate a VAPID key pair (P-256). Put the public key in `VAPID_PUBLIC_KEY` in `web/src/config.ts`.
+   - **Edge Functions → Deploy a new function → Via Editor:** name it `send-push` and paste in `supabase/functions/send-push/index.ts`. Turn off JWT verification for it; it only sends what the database already queued.
+   - **Edge Functions → Secrets:** add `VAPID_PRIVATE_KEY` with the private key as a JWK (JSON). Keep it out of git: files named `*.local.*` are ignored for this.
+   - Migration 003 points the database at `https://<project>.supabase.co/functions/v1/send-push`. Change that address if you use a different project.
 
 ## Run it locally
 
@@ -36,11 +43,14 @@ npm run dev    # http://localhost:5173, using the Supabase project in web/src/co
 ## Project layout
 
 ```
-supabase/migrations/  tables, security rules and the bet functions (run each once, in order)
+supabase/migrations/  tables, security rules, bet functions, notification triggers (run each once, in order)
+supabase/functions/   send-push: the Edge Function that sends notifications
+web/public/           manifest, icons, and sw.js (service worker)
 web/src/
   api.ts              all reads and writes
   bets.ts             what each person can do on a bet (mirrors the database rules)
-  config.ts           Supabase URL + publishable key
+  push.ts             notifications on/off and the install prompt
+  config.ts           Supabase URL, publishable key, push public key
   pages/              Home, Group, New bet, Bet, Profile, Auth, Join
 ```
 

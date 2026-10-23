@@ -7,4 +7,8 @@
 export const SUPABASE_URL = 'https://uzjxghdvhvycalucakok.supabase.co';
 export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_Hcy5ghckA3RGUKJFcXy0gw_tM2PL07z';
 
+// Public half of the push-notification signing key pair. The private half is
+// the VAPID_PRIVATE_KEY secret on the send-push Supabase function.
+export const VAPID_PUBLIC_KEY = 'BDXZt0NAhdymwCKJVsFeky0YvLlT9L1nJ-mBqpaN4fAPd5Fp9hsk74fs48jHitjEL1FSseymy1N3cSKt-1LbHUo';
+
 export const isConfigured = !SUPABASE_URL.includes('YOUR-PROJECT') && !SUPABASE_PUBLISHABLE_KEY.includes('YOUR-KEY');

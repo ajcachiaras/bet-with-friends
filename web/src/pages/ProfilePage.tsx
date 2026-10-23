@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router';
 import { api } from '../api';
 import { useAuth, useMe } from '../auth';
 import { Avatar, ErrorNote } from '../components';
+import { NotificationsCard } from '../notifications';
+import { releaseDevice } from '../push';
 
 export function ProfilePage() {
   const me = useMe();
@@ -27,6 +29,7 @@ export function ProfilePage() {
   }
 
   async function logout() {
+    await releaseDevice();
     await api.logout();
     setUser(null);
     navigate('/');
@@ -51,6 +54,8 @@ export function ProfilePage() {
         {saved && <p className="success">Saved.</p>}
         <button className="btn primary">Save</button>
       </form>
+
+      <NotificationsCard />
 
       <button className="btn subtle block" onClick={logout}>
         Log out

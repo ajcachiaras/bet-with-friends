@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router';
 import { useAuth } from './auth';
 import { Avatar, Loading } from './components';
 import { isConfigured } from './config';
+import { OfflineBar } from './notifications';
 import { AuthPage } from './pages/AuthPage';
 import { BetPage } from './pages/BetPage';
 import { GroupPage } from './pages/GroupPage';
@@ -9,9 +11,16 @@ import { HomePage } from './pages/HomePage';
 import { JoinPage } from './pages/JoinPage';
 import { NewBetPage } from './pages/NewBetPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { claimDevice } from './push';
 
 export function App() {
   const { user, loading } = useAuth();
+  const userId = user?.id;
+
+  // If this device already has notifications on, send them to whoever just signed in.
+  useEffect(() => {
+    if (userId) claimDevice().catch(() => undefined);
+  }, [userId]);
 
   if (!isConfigured) {
     return (
@@ -39,15 +48,19 @@ export function App() {
   // land on that page once they log in. Invite links get a friendlier prompt.
   if (!user) {
     return (
-      <Routes>
-        <Route path="/join/:code" element={<JoinPage />} />
-        <Route path="*" element={<AuthPage />} />
-      </Routes>
+      <>
+        <OfflineBar />
+        <Routes>
+          <Route path="/join/:code" element={<JoinPage />} />
+          <Route path="*" element={<AuthPage />} />
+        </Routes>
+      </>
     );
   }
 
   return (
     <>
+      <OfflineBar />
       <header className="topbar">
         <Link to="/" className="brand">
           <span className="brand-mark">vs</span> Bet with Friends

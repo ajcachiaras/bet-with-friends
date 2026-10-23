@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { api } from '../api';
 import { useMe } from '../auth';
 import { BetCard, ErrorNote, Loading, Section, useLoad } from '../components';
+import { PushBanner } from '../notifications';
 
 export function HomePage() {
   const me = useMe();
@@ -23,6 +24,7 @@ export function HomePage() {
   return (
     <>
       <h1 className="greeting">Hey {me.displayName.split(' ')[0]} 👋</h1>
+      <PushBanner />
 
       {yourMove.length > 0 && (
         <Section title="Your move">
