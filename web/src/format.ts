@@ -2,6 +2,12 @@ export function formatPoints(points: number): string {
   return `${points.toLocaleString()} ${points === 1 ? 'pt' : 'pts'}`;
 }
 
+// "10 pts" for an even bet, "10 vs 50 pts" when the sides put up different stakes.
+export function formatStakes(creatorPoints: number, opponentPoints: number): string {
+  if (creatorPoints === opponentPoints) return formatPoints(creatorPoints);
+  return `${creatorPoints.toLocaleString()} vs ${opponentPoints.toLocaleString()} pts`;
+}
+
 export function formatSignedPoints(points: number): string {
   if (points === 0) return '0';
   return (points > 0 ? '+' : '−') + Math.abs(points).toLocaleString();

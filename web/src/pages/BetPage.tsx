@@ -2,8 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { api, type Bet, type BetAction, type BetDetail, type Comment, type User } from '../api';
 import { useMe } from '../auth';
-import { Avatar, ErrorNote, Loading, Section, StatusPill, useLoad } from '../components';
-import { formatDate, formatPoints, timeAgo } from '../format';
+import { isEven, stakeOf } from '../bets';
+import { Avatar, ErrorNote, Loading, OpenSeat, Section, StatusPill, useLoad } from '../components';
+import { formatDate, formatPoints, formatStakes, timeAgo } from '../format';
 
 type Act = (action: BetAction, body?: { winner: 'me' | 'them' | 'push' }) => Promise<void>;
 
@@ -38,18 +39,18 @@ export function BetPage() {
 
       <div className="card bet-hero">
         <div className="bet-hero-head">
-          <span className="bet-hero-amount">{formatPoints(bet.points)}</span>
+          <span className="bet-hero-amount">{formatStakes(bet.creatorPoints, bet.opponentPoints)}</span>
           <StatusPill bet={bet} />
         </div>
         <h1 className="bet-hero-title">{bet.title}</h1>
         <div className="sides-display">
-          <SideCard user={bet.creator} side={bet.creatorSide} bet={bet} meId={me.id} />
+          <SideCard user={bet.creator} side={bet.creatorSide} stake={bet.creatorPoints} bet={bet} meId={me.id} />
           <span className="vs">vs</span>
-          <SideCard user={bet.opponent} side={bet.opponentSide} bet={bet} meId={me.id} />
+          <SideCard user={bet.opponent} side={bet.opponentSide} stake={bet.opponentPoints} bet={bet} meId={me.id} />
         </div>
         {bet.details && <p className="fine-print">{bet.details}</p>}
         <p className="muted small">
-          Proposed by {bet.creator.displayName} {timeAgo(bet.createdAt)}
+          Posted by {bet.creator.displayName} {timeAgo(bet.createdAt)}
           {bet.settleBy && ` · settles by ${formatDate(bet.settleBy)}`}
         </p>
       </div>
@@ -62,13 +63,26 @@ export function BetPage() {
   );
 }
 
-function SideCard({ user, side, bet, meId }: { user: User; side: string; bet: Bet; meId: string }) {
-  const isWinner = bet.winnerId === user.id;
+function SideCard({
+  user,
+  side,
+  stake,
+  bet,
+  meId,
+}: {
+  user: User | null;
+  side: string;
+  stake: number;
+  bet: Bet;
+  meId: string;
+}) {
+  const isWinner = user !== null && bet.winnerId === user.id;
   return (
-    <div className={`side-card${isWinner ? ' winner' : ''}`}>
-      <Avatar user={user} size={40} />
-      <div className="side-name">{user.id === meId ? 'You' : user.displayName}</div>
+    <div className={`side-card${isWinner ? ' winner' : ''}${user ? '' : ' open'}`}>
+      {user ? <Avatar user={user} size={40} /> : <OpenSeat size={40} />}
+      <div className="side-name">{user ? nameFor(user, meId) : 'Anyone'}</div>
       <div className="side-pick">{side}</div>
+      {!isEven(bet) && <div className="side-stake">Puts up {formatPoints(stake)}</div>}
       {isWinner && <div className="winner-badge">Winner</div>}
     </div>
   );
@@ -82,17 +96,58 @@ function nameFor(user: User, meId: string) {
 function describeReport(bet: Bet, reporter: User, meId: string): string {
   const who = nameFor(reporter, meId);
   if (bet.outcome === 'push') return `${who} called it a push.`;
-  const winner = bet.outcome === 'creator' ? bet.creator : bet.opponent;
+  const winner = bet.outcome === 'creator' ? bet.creator : bet.opponent!;
   const verb = reporter.id === meId ? 'said' : 'says';
   if (winner.id === reporter.id) return `${who} ${verb} ${reporter.id === meId ? 'you' : 'they'} won.`;
   return `${who} ${verb} ${winner.id === meId ? 'you' : winner.displayName} won.`;
 }
 
+// "You'd put up 50 to win 10." for whoever is about to join the bet.
+function riskLine(bet: Bet) {
+  return (
+    <>
+      You&rsquo;d put up <strong>{formatPoints(bet.opponentPoints)}</strong> to win{' '}
+      <strong>{formatPoints(bet.creatorPoints)}</strong>.
+    </>
+  );
+}
+
 function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; busy: boolean }) {
-  const isCreator = bet.creator.id === me.id;
-  const isParticipant = isCreator || bet.opponent.id === me.id;
-  const other = isCreator ? bet.opponent : bet.creator;
   const can = (a: BetAction) => bet.actions.includes(a);
+
+  if (bet.status === 'open') {
+    if (can('take')) {
+      return (
+        <div className="card panel up-for-grabs">
+          <p>
+            <strong>{bet.creator.displayName}</strong> is taking <strong>{bet.creatorSide}</strong>. Take the other
+            side, <strong>{bet.opponentSide}</strong>, and it&rsquo;s on. {riskLine(bet)}
+          </p>
+          <button className="btn primary" disabled={busy} onClick={() => act('take')}>
+            Take this bet
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="card panel">
+        <p>
+          It&rsquo;s on the {bet.groupName} board. The first person to take it is your opponent.
+        </p>
+        {can('cancel') && (
+          <button className="btn subtle" disabled={busy} onClick={() => act('cancel')}>
+            Take it down
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Every status from here on has an opponent.
+  const opponent = bet.opponent!;
+  const isCreator = bet.creator.id === me.id;
+  const isParticipant = isCreator || opponent.id === me.id;
+  const other = isCreator ? opponent : bet.creator;
 
   switch (bet.status) {
     case 'proposed':
@@ -100,8 +155,8 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
         return (
           <div className="card panel">
             <p>
-              <strong>{bet.creator.displayName}</strong> bet you {formatPoints(bet.points)}. You&rsquo;d have:{' '}
-              <strong>{bet.opponentSide}</strong>.
+              <strong>{bet.creator.displayName}</strong> bet you. You&rsquo;d have: <strong>{bet.opponentSide}</strong>.{' '}
+              {riskLine(bet)}
             </p>
             <div className="button-row">
               <button className="btn primary" disabled={busy} onClick={() => act('accept')}>
@@ -116,7 +171,7 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
       }
       return (
         <div className="card panel">
-          <p>Waiting for {bet.opponent.displayName} to accept.</p>
+          <p>Waiting for {opponent.displayName} to accept.</p>
           {can('cancel') && (
             <button className="btn subtle" disabled={busy} onClick={() => act('cancel')}>
               Cancel bet
@@ -154,7 +209,7 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
               className="btn"
               disabled={busy}
               onClick={() => {
-                if (window.confirm(`This settles the bet. ${other.displayName} gets ${formatPoints(bet.points)}.`)) {
+                if (window.confirm(`This settles the bet. ${other.displayName} wins ${formatPoints(stakeOf(bet, me.id))}.`)) {
                   act('report', { winner: 'them' });
                 }
               }}
@@ -169,8 +224,8 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
       );
 
     case 'reported': {
-      const reporter = bet.outcomeReportedBy === bet.creator.id ? bet.creator : bet.opponent;
-      const confirmer = reporter.id === bet.creator.id ? bet.opponent : bet.creator;
+      const reporter = bet.outcomeReportedBy === bet.creator.id ? bet.creator : opponent;
+      const confirmer = reporter.id === bet.creator.id ? opponent : bet.creator;
       return (
         <div className="card panel">
           <p>
@@ -206,7 +261,7 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
     case 'declined':
       return (
         <div className="card panel muted">
-          <p>{nameFor(bet.opponent, me.id)} declined this bet.</p>
+          <p>{nameFor(opponent, me.id)} declined this bet.</p>
         </div>
       );
     case 'cancelled':
@@ -218,17 +273,18 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
   }
 }
 
-// The final word on a settled bet, from the viewer's side of it.
+// The final word on a settled bet, from the viewer's side of it. The winner
+// collects whatever the loser put up.
 function ResultPanel({ bet, me }: { bet: Bet; me: User }) {
-  const winner = bet.winnerId === bet.creator.id ? bet.creator : bet.opponent;
-  const loser = winner.id === bet.creator.id ? bet.opponent : bet.creator;
-  const points = formatPoints(bet.points);
+  const winner = bet.winnerId === bet.creator.id ? bet.creator : bet.opponent!;
+  const loser = winner.id === bet.creator.id ? bet.opponent! : bet.creator;
+  const won = formatPoints(stakeOf(bet, loser.id));
   const settled = bet.settledAt && <p className="muted small">Settled {timeAgo(bet.settledAt)}</p>;
 
   if (me.id === winner.id) {
     return (
       <div className="card panel result-panel won">
-        <h2>You won {points} 🎉</h2>
+        <h2>You won {won} 🎉</h2>
         <p>{loser.displayName} owes you bragging rights.</p>
         {settled}
       </div>
@@ -238,7 +294,7 @@ function ResultPanel({ bet, me }: { bet: Bet; me: User }) {
     return (
       <div className="card panel result-panel">
         <h2>{winner.displayName} took this one</h2>
-        <p>You lost {points}. Win them back.</p>
+        <p>You lost {formatPoints(stakeOf(bet, me.id))}. Win them back.</p>
         {settled}
       </div>
     );
@@ -246,7 +302,7 @@ function ResultPanel({ bet, me }: { bet: Bet; me: User }) {
   return (
     <div className="card panel result-panel">
       <p>
-        <strong>{winner.displayName}</strong> won {points} from {loser.displayName}.
+        <strong>{winner.displayName}</strong> won {won} from {loser.displayName}.
       </p>
       {settled}
     </div>

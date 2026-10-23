@@ -1,5 +1,5 @@
--- Bet with Friends: the whole database for a fresh Supabase project.
--- Paste this file into the Supabase SQL Editor and click Run (once).
+-- Bet with Friends, migration 001: the initial database.
+-- Run each file in supabase/migrations once, in order, in the Supabase SQL Editor.
 --
 -- How it's secured: everyone signed in can read rows only from groups they
 -- belong to (row level security). All changes to groups and bets go through

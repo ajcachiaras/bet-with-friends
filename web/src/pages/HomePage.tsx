@@ -7,14 +7,17 @@ import { BetCard, ErrorNote, Loading, Section, useLoad } from '../components';
 export function HomePage() {
   const me = useMe();
   const bets = useLoad(() => api.myBets(), []);
+  const open = useLoad(() => api.openBets(), []);
   const groups = useLoad(() => api.groups(), []);
 
-  if (bets.error || groups.error) return <ErrorNote message={bets.error ?? groups.error} />;
-  if (!bets.data || !groups.data) return <Loading />;
+  const error = bets.error ?? open.error ?? groups.error;
+  if (error) return <ErrorNote message={error} />;
+  if (!bets.data || !open.data || !groups.data) return <Loading />;
 
   const yourMove = bets.data.bets.filter((b) => b.todo);
+  // Includes my own open bets still waiting on the board.
   const live = bets.data.bets.filter(
-    (b) => !b.todo && ['proposed', 'active', 'reported', 'disputed'].includes(b.status),
+    (b) => !b.todo && ['open', 'proposed', 'active', 'reported', 'disputed'].includes(b.status),
   );
 
   return (
@@ -25,6 +28,16 @@ export function HomePage() {
         <Section title="Your move">
           <div className="stack">
             {yourMove.map((b) => (
+              <BetCard key={b.id} bet={b} meId={me.id} showGroup />
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {open.data.bets.length > 0 && (
+        <Section title="Up for grabs">
+          <div className="stack">
+            {open.data.bets.map((b) => (
               <BetCard key={b.id} bet={b} meId={me.id} showGroup />
             ))}
           </div>
@@ -55,6 +68,7 @@ export function HomePage() {
                   <div className="muted">
                     {g.memberCount} {g.memberCount === 1 ? 'member' : 'members'}
                     {g.liveBets > 0 && ` · ${g.liveBets} live ${g.liveBets === 1 ? 'bet' : 'bets'}`}
+                    {g.openBets > 0 && ` · ${g.openBets} up for grabs`}
                   </div>
                 </div>
                 <span className="chevron">&rsaquo;</span>

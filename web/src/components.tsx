@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { Bet, User } from './api';
-import { formatPoints, timeAgo } from './format';
+import { netFor } from './bets';
+import { formatSignedPoints, formatStakes, timeAgo } from './format';
 
 // Loads data on mount (and when deps change), with a reload function and a
 // setter so mutations can swap in the fresh copy the API returns.
@@ -60,8 +61,19 @@ export function Avatar({ user, size = 36 }: { user: User; size?: number }) {
   );
 }
 
+// Stands in for the opponent of an open bet nobody has taken yet.
+export function OpenSeat({ size = 36 }: { size?: number }) {
+  return (
+    <span className="avatar open-seat" style={{ width: size, height: size, fontSize: size * 0.45 }} aria-hidden="true">
+      ?
+    </span>
+  );
+}
+
 export function statusLabel(bet: Bet): { text: string; tone: 'pending' | 'live' | 'alert' | 'done' | 'muted' } {
   switch (bet.status) {
+    case 'open':
+      return { text: 'Up for grabs', tone: 'live' };
     case 'proposed':
       return { text: 'Waiting to accept', tone: 'pending' };
     case 'active':
@@ -85,19 +97,23 @@ export function StatusPill({ bet }: { bet: Bet }) {
 }
 
 export function BetCard({ bet, meId, showGroup }: { bet: Bet; meId: string; showGroup?: boolean }) {
-  const won = bet.winnerId === meId;
-  const lost = bet.loserId === meId;
+  // Once settled, show what the bet did to my score; until then, the stakes.
+  const net = netFor(bet, meId);
   return (
     <Link to={`/bets/${bet.id}`} className={`card bet-card${bet.todo ? ' needs-action' : ''}`}>
       <div className="bet-card-top">
         <span className="matchup">
           <Avatar user={bet.creator} size={24} />
-          <Avatar user={bet.opponent} size={24} />
+          {bet.opponent ? <Avatar user={bet.opponent} size={24} /> : <OpenSeat size={24} />}
           <span>
-            {bet.creator.displayName} vs {bet.opponent.displayName}
+            {bet.creator.displayName} vs {bet.opponent?.displayName ?? 'anyone'}
           </span>
         </span>
-        <span className={`amount${won ? ' won' : lost ? ' lost' : ''}`}>{formatPoints(bet.points)}</span>
+        {net === null ? (
+          <span className="amount">{formatStakes(bet.creatorPoints, bet.opponentPoints)}</span>
+        ) : (
+          <span className={`amount ${net > 0 ? 'won' : 'lost'}`}>{formatSignedPoints(net)} pts</span>
+        )}
       </div>
       <div className="bet-card-title">{bet.title}</div>
       <div className="bet-card-meta">

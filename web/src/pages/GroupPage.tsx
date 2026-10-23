@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { api, type GroupDetail } from '../api';
 import { useMe } from '../auth';
@@ -91,16 +91,24 @@ function InviteCard({ code, groupName }: { code: string; groupName: string }) {
 
 function BetsTab({ data, meId }: { data: GroupDetail; meId: string }) {
   if (data.bets.length === 0) return <p className="empty">No bets yet. Someone has to go first.</p>;
-  const open = data.bets.filter((b) => ['proposed', 'active', 'reported', 'disputed'].includes(b.status) || b.todo);
-  const closed = data.bets.filter((b) => !open.includes(b));
+  // The board (open bets, oldest first so none get buried), then live bets, then history.
+  const board = data.bets.filter((b) => b.status === 'open').reverse();
+  const live = data.bets.filter((b) => ['proposed', 'active', 'reported', 'disputed'].includes(b.status) || b.todo);
+  const closed = data.bets.filter((b) => !board.includes(b) && !live.includes(b));
+  const sections = [
+    { title: 'Up for grabs', bets: board },
+    { title: 'Live', bets: live },
+    { title: 'History', bets: closed },
+  ].filter((s) => s.bets.length > 0);
   return (
     <div className="stack">
-      {open.map((b) => (
-        <BetCard key={b.id} bet={b} meId={meId} />
-      ))}
-      {closed.length > 0 && open.length > 0 && <h3 className="divider">History</h3>}
-      {closed.map((b) => (
-        <BetCard key={b.id} bet={b} meId={meId} />
+      {sections.map((s) => (
+        <Fragment key={s.title}>
+          <h3 className="divider">{s.title}</h3>
+          {s.bets.map((b) => (
+            <BetCard key={b.id} bet={b} meId={meId} />
+          ))}
+        </Fragment>
       ))}
     </div>
   );

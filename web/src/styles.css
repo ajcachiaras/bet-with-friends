@@ -789,3 +789,55 @@ textarea:focus {
     transform: rotate(360deg);
   }
 }
+
+/* ---------- Open bets and odds ---------- */
+
+.avatar.open-seat {
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1.5px dashed var(--border);
+}
+
+.side-card.open {
+  background: transparent;
+  border: 1.5px dashed var(--border);
+}
+
+.side-stake {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.up-for-grabs {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand) inset, var(--shadow);
+}
+
+.hint {
+  display: block;
+  margin-top: 8px;
+}
+
+.odds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-top: -4px;
+}
+
+.odds p {
+  margin: 0;
+}
+
+.link-btn {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--brand);
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  cursor: pointer;
+}

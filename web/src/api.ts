@@ -1,8 +1,8 @@
 // Everything the app reads and writes, on top of Supabase. Reads go straight
 // to the tables (row level security limits them to your own groups); changes
-// to groups and bets go through the database functions in supabase/schema.sql.
+// to groups and bets go through the database functions in supabase/migrations.
 import type { User as AuthUser } from '@supabase/supabase-js';
-import { allowedActions, loserOf, todoFor, winnerOf } from './bets';
+import { allowedActions, leaderboard, loserOf, todoFor, winnerOf } from './bets';
 import { supabase } from './supabase';
 
 export type User = {
@@ -12,9 +12,9 @@ export type User = {
 
 export type Me = User & { email: string };
 
-export type BetStatus = 'proposed' | 'declined' | 'cancelled' | 'active' | 'reported' | 'disputed' | 'settled';
+export type BetStatus = 'open' | 'proposed' | 'declined' | 'cancelled' | 'active' | 'reported' | 'disputed' | 'settled';
 export type Outcome = 'creator' | 'opponent' | 'push';
-export type BetAction = 'accept' | 'decline' | 'cancel' | 'report' | 'confirm' | 'dispute';
+export type BetAction = 'take' | 'accept' | 'decline' | 'cancel' | 'report' | 'confirm' | 'dispute';
 
 export type Bet = {
   id: number;
@@ -24,7 +24,9 @@ export type Bet = {
   details: string;
   creatorSide: string;
   opponentSide: string;
-  points: number;
+  // What each side puts up. The winner collects the loser's stake.
+  creatorPoints: number;
+  opponentPoints: number;
   settleBy: string | null;
   status: BetStatus;
   outcome: Outcome | null;
@@ -33,7 +35,8 @@ export type Bet = {
   acceptedAt: string | null;
   settledAt: string | null;
   creator: User;
-  opponent: User;
+  // Null while an open bet waits on the group board for someone to take it.
+  opponent: User | null;
   winnerId: string | null;
   loserId: string | null;
   actions: BetAction[];
@@ -42,7 +45,14 @@ export type Bet = {
 
 export type Comment = { id: number; body: string; createdAt: string; user: User };
 
-export type GroupSummary = { id: number; name: string; inviteCode: string; memberCount: number; liveBets: number };
+export type GroupSummary = {
+  id: number;
+  name: string;
+  inviteCode: string;
+  memberCount: number;
+  liveBets: number;
+  openBets: number;
+};
 
 export type LeaderboardRow = { user: User; net: number; wins: number; losses: number; pushes: number };
 
@@ -65,12 +75,13 @@ type BetRow = {
   id: number;
   group_id: number;
   creator_id: string;
-  opponent_id: string;
+  opponent_id: string | null;
   title: string;
   details: string;
   creator_side: string;
   opponent_side: string;
-  points: number;
+  creator_points: number;
+  opponent_points: number;
   settle_by: string | null;
   status: BetStatus;
   outcome: Outcome | null;
@@ -128,7 +139,8 @@ function toBet(r: BetRow, meId: string): Bet {
     details: r.details,
     creatorSide: r.creator_side,
     opponentSide: r.opponent_side,
-    points: r.points,
+    creatorPoints: r.creator_points,
+    opponentPoints: r.opponent_points,
     settleBy: r.settle_by,
     status: r.status,
     outcome: r.outcome,
@@ -137,7 +149,7 @@ function toBet(r: BetRow, meId: string): Bet {
     acceptedAt: r.accepted_at,
     settledAt: r.settled_at,
     creator: toUser(r.creator, r.creator_id),
-    opponent: toUser(r.opponent, r.opponent_id),
+    opponent: r.opponent_id ? toUser(r.opponent, r.opponent_id) : null,
     winnerId: winnerOf(facts),
     loserId: loserOf(facts),
     actions: allowedActions(facts, meId),
@@ -151,34 +163,6 @@ async function loadMe(authUser: AuthUser): Promise<Me> {
   );
   if (!profile) throw new ApiError('Your profile is missing. Try signing up again.');
   return { ...toUser(profile, authUser.id), email: authUser.email ?? '' };
-}
-
-// Net points and record per member, across every settled bet in the group.
-function leaderboard(members: User[], bets: Bet[]): LeaderboardRow[] {
-  const stats = new Map(members.map((u) => [u.id, { net: 0, wins: 0, losses: 0, pushes: 0 }]));
-  for (const b of bets) {
-    if (b.status !== 'settled') continue;
-    if (b.winnerId === null || b.loserId === null) {
-      for (const id of [b.creator.id, b.opponent.id]) {
-        const s = stats.get(id);
-        if (s) s.pushes++;
-      }
-      continue;
-    }
-    const ws = stats.get(b.winnerId);
-    const ls = stats.get(b.loserId);
-    if (ws) {
-      ws.net += b.points;
-      ws.wins++;
-    }
-    if (ls) {
-      ls.net -= b.points;
-      ls.losses++;
-    }
-  }
-  return members
-    .map((u) => ({ user: u, ...stats.get(u.id)! }))
-    .sort((a, b) => b.net - a.net || b.wins - a.wins);
 }
 
 export const api = {
@@ -234,6 +218,7 @@ export const api = {
         inviteCode: g.invite_code,
         memberCount: g.group_members.length,
         liveBets: g.bets.filter((b) => LIVE_STATUSES.includes(b.status)).length,
+        openBets: g.bets.filter((b) => b.status === 'open').length,
       })),
     };
   },
@@ -291,20 +276,41 @@ export const api = {
     return { bets: rows.map((b) => toBet(b, meId)) };
   },
 
+  // Open bets in any of my groups that someone else posted, oldest first so
+  // nothing sits unnoticed at the bottom.
+  async openBets(): Promise<{ bets: Bet[] }> {
+    const meId = await myId();
+    const rows = await run<BetRow[]>(
+      supabase
+        .from('bets')
+        .select(BET_SELECT)
+        .eq('status', 'open')
+        .neq('creator_id', meId)
+        .order('created_at')
+        .limit(100),
+    );
+    return { bets: rows.map((b) => toBet(b, meId)) };
+  },
+
+  // opponentId null posts an open bet to the group board.
   async createBet(
     groupId: number,
     body: {
-      opponentId: string;
+      opponentId: string | null;
       title: string;
       details: string;
       creatorSide: string;
       opponentSide: string;
-      points: string;
+      creatorPoints: string;
+      opponentPoints: string;
       settleBy: string;
     },
   ): Promise<{ betId: number }> {
-    const points = Number(body.points);
-    if (!Number.isInteger(points)) throw new ApiError('Points must be a whole number.');
+    const creatorPoints = Number(body.creatorPoints);
+    const opponentPoints = Number(body.opponentPoints);
+    if (!Number.isInteger(creatorPoints) || !Number.isInteger(opponentPoints)) {
+      throw new ApiError('Points must be whole numbers.');
+    }
     const betId = await run<number>(
       supabase.rpc('create_bet', {
         p_group_id: groupId,
@@ -312,7 +318,8 @@ export const api = {
         p_title: body.title,
         p_creator_side: body.creatorSide,
         p_opponent_side: body.opponentSide,
-        p_points: points,
+        p_creator_points: creatorPoints,
+        p_opponent_points: opponentPoints,
         p_details: body.details,
         p_settle_by: body.settleBy || null,
       }),
