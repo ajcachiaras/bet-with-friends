@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useMe } from '../auth';
 import { Avatar, ErrorNote, Loading, useLoad } from '../components';
 
-const QUICK_AMOUNTS = [5, 10, 20, 50];
+const QUICK_POINTS = [5, 10, 25, 50];
 
 export function NewBetPage() {
   const me = useMe();
@@ -12,8 +12,8 @@ export function NewBetPage() {
   const groupId = Number(useParams().id);
   const group = useLoad(() => api.group(groupId), [groupId]);
 
-  const [opponentId, setOpponentId] = useState<number | null>(null);
-  const [form, setForm] = useState({ title: '', creatorSide: '', opponentSide: '', amount: '', settleBy: '', details: '' });
+  const [opponentId, setOpponentId] = useState<string | null>(null);
+  const [form, setForm] = useState({ title: '', creatorSide: '', opponentSide: '', points: '', settleBy: '', details: '' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -84,38 +84,43 @@ export function NewBetPage() {
         </div>
 
         <label>
-          Amount
-          <div className="input-prefix">
-            <span>$</span>
-            <input value={form.amount} onChange={set('amount')} inputMode="decimal" placeholder="20" required />
+          Points at stake
+          <div className="input-suffix">
+            <input value={form.points} onChange={set('points')} inputMode="numeric" placeholder="10" required />
+            <span>pts</span>
           </div>
           <div className="chips">
-            {QUICK_AMOUNTS.map((a) => (
+            {QUICK_POINTS.map((p) => (
               <button
                 type="button"
-                key={a}
-                className={`chip${form.amount === String(a) ? ' selected' : ''}`}
-                onClick={() => setForm((f) => ({ ...f, amount: String(a) }))}
+                key={p}
+                className={`chip${form.points === String(p) ? ' selected' : ''}`}
+                onClick={() => setForm((f) => ({ ...f, points: String(p) }))}
               >
-                ${a}
+                {p}
               </button>
             ))}
           </div>
+          <small className="muted">Just for bragging rights. Points aren&rsquo;t worth any money.</small>
         </label>
 
         <label>
-          Settle by <span className="muted">(optional)</span>
+          <span>
+            Settle by <span className="muted">(optional)</span>
+          </span>
           <input type="date" value={form.settleBy} onChange={set('settleBy')} />
         </label>
 
         <label>
-          Fine print <span className="muted">(optional)</span>
+          <span>
+            Fine print <span className="muted">(optional)</span>
+          </span>
           <textarea
             value={form.details}
             onChange={set('details')}
             rows={3}
             maxLength={1000}
-            placeholder="Overtime counts. Loser pays within 24 hours."
+            placeholder="Overtime counts. Loser posts a photo in a Bills jersey."
           />
         </label>
 

@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router';
 import { api, type GroupDetail } from '../api';
 import { useMe } from '../auth';
 import { Avatar, BetCard, ErrorNote, Loading, useLoad } from '../components';
-import { formatSignedMoney } from '../format';
+import { formatSignedPoints } from '../format';
 
 type Tab = 'bets' | 'leaderboard' | 'members';
 
@@ -55,7 +55,8 @@ export function GroupPage() {
 
 function InviteCard({ code, groupName }: { code: string; groupName: string }) {
   const [copied, setCopied] = useState(false);
-  const link = `${window.location.origin}/join/${code}`;
+  // Hash routes, because GitHub Pages can only serve index.html at the app's root.
+  const link = `${window.location.origin}${window.location.pathname}#/join/${code}`;
 
   async function share() {
     if (navigator.share) {
@@ -88,7 +89,7 @@ function InviteCard({ code, groupName }: { code: string; groupName: string }) {
   );
 }
 
-function BetsTab({ data, meId }: { data: GroupDetail; meId: number }) {
+function BetsTab({ data, meId }: { data: GroupDetail; meId: string }) {
   if (data.bets.length === 0) return <p className="empty">No bets yet. Someone has to go first.</p>;
   const open = data.bets.filter((b) => ['proposed', 'active', 'reported', 'disputed'].includes(b.status) || b.todo);
   const closed = data.bets.filter((b) => !open.includes(b));
@@ -105,7 +106,7 @@ function BetsTab({ data, meId }: { data: GroupDetail; meId: number }) {
   );
 }
 
-function LeaderboardTab({ data, meId }: { data: GroupDetail; meId: number }) {
+function LeaderboardTab({ data, meId }: { data: GroupDetail; meId: string }) {
   return (
     <div className="card list">
       {data.leaderboard.map((row, i) => (
@@ -118,7 +119,7 @@ function LeaderboardTab({ data, meId }: { data: GroupDetail; meId: number }) {
               {row.wins}W &ndash; {row.losses}L{row.pushes > 0 && ` – ${row.pushes}P`}
             </div>
           </div>
-          <span className={`net ${row.net > 0 ? 'won' : row.net < 0 ? 'lost' : ''}`}>{formatSignedMoney(row.net)}</span>
+          <span className={`net ${row.net > 0 ? 'won' : row.net < 0 ? 'lost' : ''}`}>{formatSignedPoints(row.net)}</span>
         </div>
       ))}
     </div>
@@ -131,11 +132,8 @@ function MembersTab({ data }: { data: GroupDetail }) {
       {data.members.map((u) => (
         <div key={u.id} className="list-row">
           <Avatar user={u} size={32} />
-          <div className="grow">
-            <div>{u.displayName}</div>
-            <div className="muted small">@{u.username}</div>
-          </div>
-          <span className="venmo-handle">Venmo @{u.venmoUsername}</span>
+          <div className="grow">{u.displayName}</div>
+          {u.id === data.group.createdBy && <span className="muted small">Started the group</span>}
         </div>
       ))}
     </div>

@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router';
 import { api } from '../api';
 import { useAuth, useMe } from '../auth';
 import { Avatar, ErrorNote } from '../components';
-import { venmoProfileUrl } from '../venmo';
 
 export function ProfilePage() {
   const me = useMe();
   const { setUser } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ displayName: me.displayName, venmoUsername: me.venmoUsername });
+  const [displayName, setDisplayName] = useState(me.displayName);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -18,9 +17,9 @@ export function ProfilePage() {
     setError(null);
     setSaved(false);
     try {
-      const { user } = await api.updateMe(form);
+      const { user } = await api.updateMe({ displayName });
       setUser(user);
-      setForm({ displayName: user.displayName, venmoUsername: user.venmoUsername });
+      setDisplayName(user.displayName);
       setSaved(true);
     } catch (err) {
       setError((err as Error).message);
@@ -39,39 +38,14 @@ export function ProfilePage() {
         <Avatar user={me} size={64} />
         <div>
           <h1>{me.displayName}</h1>
-          <p className="muted">@{me.username}</p>
+          <p className="muted">{me.email}</p>
         </div>
       </div>
 
       <form className="card form" onSubmit={save}>
         <label>
           Your name
-          <input
-            value={form.displayName}
-            onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
-            required
-            maxLength={40}
-          />
-        </label>
-        <label>
-          Venmo username
-          <div className="input-prefix">
-            <span>@</span>
-            <input
-              value={form.venmoUsername}
-              onChange={(e) => setForm((f) => ({ ...f, venmoUsername: e.target.value }))}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              required
-              maxLength={31}
-            />
-          </div>
-          <small>
-            <a href={venmoProfileUrl(me.venmoUsername)} target="_blank" rel="noopener noreferrer">
-              Check that this is you on Venmo &rarr;
-            </a>
-          </small>
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required maxLength={40} />
         </label>
         <ErrorNote message={error} />
         {saved && <p className="success">Saved.</p>}

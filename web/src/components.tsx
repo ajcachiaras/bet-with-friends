@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { Bet, User } from './api';
-import { formatMoney, timeAgo } from './format';
+import { formatPoints, timeAgo } from './format';
 
 // Loads data on mount (and when deps change), with a reload function and a
 // setter so mutations can swap in the fresh copy the API returns.
@@ -46,7 +46,9 @@ export function Avatar({ user, size = 36 }: { user: User; size?: number }) {
     .join('')
     .slice(0, 2)
     .toUpperCase();
-  const hue = AVATAR_HUES[user.id % AVATAR_HUES.length];
+  let hash = 0;
+  for (const ch of user.id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const hue = AVATAR_HUES[hash % AVATAR_HUES.length];
   return (
     <span
       className="avatar"
@@ -69,8 +71,7 @@ export function statusLabel(bet: Bet): { text: string; tone: 'pending' | 'live' 
     case 'disputed':
       return { text: 'Disputed', tone: 'alert' };
     case 'settled':
-      if (bet.outcome === 'push') return { text: 'Push', tone: 'muted' };
-      return bet.paidAt ? { text: 'Paid', tone: 'done' } : { text: 'Settled · unpaid', tone: 'pending' };
+      return bet.outcome === 'push' ? { text: 'Push', tone: 'muted' } : { text: 'Final', tone: 'done' };
     case 'declined':
       return { text: 'Declined', tone: 'muted' };
     case 'cancelled':
@@ -83,7 +84,7 @@ export function StatusPill({ bet }: { bet: Bet }) {
   return <span className={`pill pill-${tone}`}>{text}</span>;
 }
 
-export function BetCard({ bet, meId, showGroup }: { bet: Bet; meId: number; showGroup?: boolean }) {
+export function BetCard({ bet, meId, showGroup }: { bet: Bet; meId: string; showGroup?: boolean }) {
   const won = bet.winnerId === meId;
   const lost = bet.loserId === meId;
   return (
@@ -96,7 +97,7 @@ export function BetCard({ bet, meId, showGroup }: { bet: Bet; meId: number; show
             {bet.creator.displayName} vs {bet.opponent.displayName}
           </span>
         </span>
-        <span className={`amount${won ? ' won' : lost ? ' lost' : ''}`}>{formatMoney(bet.amountCents)}</span>
+        <span className={`amount${won ? ' won' : lost ? ' lost' : ''}`}>{formatPoints(bet.points)}</span>
       </div>
       <div className="bet-card-title">{bet.title}</div>
       <div className="bet-card-meta">

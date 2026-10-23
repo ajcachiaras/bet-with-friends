@@ -3,8 +3,7 @@ import { Link, useParams } from 'react-router';
 import { api, type Bet, type BetAction, type BetDetail, type Comment, type User } from '../api';
 import { useMe } from '../auth';
 import { Avatar, ErrorNote, Loading, Section, StatusPill, useLoad } from '../components';
-import { formatDate, formatMoney, timeAgo } from '../format';
-import { venmoUrl } from '../venmo';
+import { formatDate, formatPoints, timeAgo } from '../format';
 
 type Act = (action: BetAction, body?: { winner: 'me' | 'them' | 'push' }) => Promise<void>;
 
@@ -39,7 +38,7 @@ export function BetPage() {
 
       <div className="card bet-hero">
         <div className="bet-hero-head">
-          <span className="bet-hero-amount">{formatMoney(bet.amountCents)}</span>
+          <span className="bet-hero-amount">{formatPoints(bet.points)}</span>
           <StatusPill bet={bet} />
         </div>
         <h1 className="bet-hero-title">{bet.title}</h1>
@@ -63,7 +62,7 @@ export function BetPage() {
   );
 }
 
-function SideCard({ user, side, bet, meId }: { user: User; side: string; bet: Bet; meId: number }) {
+function SideCard({ user, side, bet, meId }: { user: User; side: string; bet: Bet; meId: string }) {
   const isWinner = bet.winnerId === user.id;
   return (
     <div className={`side-card${isWinner ? ' winner' : ''}`}>
@@ -75,12 +74,12 @@ function SideCard({ user, side, bet, meId }: { user: User; side: string; bet: Be
   );
 }
 
-function nameFor(user: User, meId: number) {
+function nameFor(user: User, meId: string) {
   return user.id === meId ? 'You' : user.displayName;
 }
 
 // "Sam says they won." / "You said Sam won." / "Sam called it a push."
-function describeReport(bet: Bet, reporter: User, meId: number): string {
+function describeReport(bet: Bet, reporter: User, meId: string): string {
   const who = nameFor(reporter, meId);
   if (bet.outcome === 'push') return `${who} called it a push.`;
   const winner = bet.outcome === 'creator' ? bet.creator : bet.opponent;
@@ -101,7 +100,7 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
         return (
           <div className="card panel">
             <p>
-              <strong>{bet.creator.displayName}</strong> bet you {formatMoney(bet.amountCents)}. You&rsquo;d have:{' '}
+              <strong>{bet.creator.displayName}</strong> bet you {formatPoints(bet.points)}. You&rsquo;d have:{' '}
               <strong>{bet.opponentSide}</strong>.
             </p>
             <div className="button-row">
@@ -155,7 +154,7 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
               className="btn"
               disabled={busy}
               onClick={() => {
-                if (window.confirm(`This settles the bet. You'll owe ${other.displayName} ${formatMoney(bet.amountCents)}.`)) {
+                if (window.confirm(`This settles the bet. ${other.displayName} gets ${formatPoints(bet.points)}.`)) {
                   act('report', { winner: 'them' });
                 }
               }}
@@ -197,12 +196,12 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
         return (
           <div className="card panel">
             <p>
-              <strong>Push.</strong> No money changes hands.
+              <strong>Push.</strong> Nobody gains or loses points.
             </p>
           </div>
         );
       }
-      return <VenmoPanel bet={bet} me={me} act={act} busy={busy} />;
+      return <ResultPanel bet={bet} me={me} />;
 
     case 'declined':
       return (
@@ -219,106 +218,37 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
   }
 }
 
-// Where the money moves. The winner gets a prefilled Venmo request; the loser
-// gets a prefilled Venmo payment. Either can mark the bet paid afterwards.
-function VenmoPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; busy: boolean }) {
+// The final word on a settled bet, from the viewer's side of it.
+function ResultPanel({ bet, me }: { bet: Bet; me: User }) {
   const winner = bet.winnerId === bet.creator.id ? bet.creator : bet.opponent;
   const loser = winner.id === bet.creator.id ? bet.opponent : bet.creator;
-  const amount = formatMoney(bet.amountCents);
-  const note = bet.title;
-
-  const markPaid = (question: string) => {
-    if (window.confirm(question)) act('paid');
-  };
-
-  if (bet.paidAt) {
-    const marker = bet.paidMarkedBy === winner.id ? winner : loser;
-    return (
-      <div className="card panel paid">
-        <p>
-          <strong>
-            ✓ {nameFor(loser, me.id)} paid {winner.id === me.id ? 'you' : winner.displayName} {amount}.
-          </strong>
-        </p>
-        <p className="muted small">
-          Marked paid by {nameFor(marker, me.id)} {timeAgo(bet.paidAt)}
-        </p>
-      </div>
-    );
-  }
+  const points = formatPoints(bet.points);
+  const settled = bet.settledAt && <p className="muted small">Settled {timeAgo(bet.settledAt)}</p>;
 
   if (me.id === winner.id) {
     return (
-      <div className="card panel venmo-panel">
-        <h2>You won {amount} 🎉</h2>
-        <p>
-          Request it from {loser.displayName} (<span className="venmo-handle">@{loser.venmoUsername}</span>). Venmo
-          opens with the amount and note filled in. Just tap <strong>Request</strong>.
-        </p>
-        <a
-          className="btn venmo-btn"
-          href={venmoUrl({ txn: 'charge', username: loser.venmoUsername, amountCents: bet.amountCents, note })}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => {
-            if (!bet.requestedAt) act('requested');
-          }}
-        >
-          Request {amount} on Venmo
-        </a>
-        {bet.requestedAt && (
-          <p className="muted small">
-            You opened the Venmo request {timeAgo(bet.requestedAt)}. Once {loser.displayName} pays, mark it paid.
-          </p>
-        )}
-        <button
-          className="btn"
-          disabled={busy}
-          onClick={() => markPaid(`Mark this bet as paid? Only do this once ${loser.displayName}'s payment shows up in Venmo.`)}
-        >
-          {loser.displayName} paid me
-        </button>
+      <div className="card panel result-panel won">
+        <h2>You won {points} 🎉</h2>
+        <p>{loser.displayName} owes you bragging rights.</p>
+        {settled}
       </div>
     );
   }
-
   if (me.id === loser.id) {
     return (
-      <div className="card panel venmo-panel">
-        <h2>
-          You owe {winner.displayName} {amount}
-        </h2>
-        {bet.requestedAt ? (
-          <p>
-            {winner.displayName} opened a Venmo request {timeAgo(bet.requestedAt)}. Check Venmo for it first so you
-            don&rsquo;t pay twice.
-          </p>
-        ) : (
-          <p>
-            Pay <span className="venmo-handle">@{winner.venmoUsername}</span> on Venmo. The amount and note are filled
-            in for you.
-          </p>
-        )}
-        <a
-          className={`btn venmo-btn${bet.requestedAt ? ' secondary' : ''}`}
-          href={venmoUrl({ txn: 'pay', username: winner.venmoUsername, amountCents: bet.amountCents, note })}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Pay {amount} on Venmo
-        </a>
-        <button className="btn" disabled={busy} onClick={() => markPaid(`Mark this bet as paid to ${winner.displayName}?`)}>
-          I paid
-        </button>
+      <div className="card panel result-panel">
+        <h2>{winner.displayName} took this one</h2>
+        <p>You lost {points}. Win them back.</p>
+        {settled}
       </div>
     );
   }
-
   return (
-    <div className="card panel">
+    <div className="card panel result-panel">
       <p>
-        <strong>{winner.displayName}</strong> won {amount} from {loser.displayName}. Waiting on payment.
+        <strong>{winner.displayName}</strong> won {points} from {loser.displayName}.
       </p>
+      {settled}
     </div>
   );
 }

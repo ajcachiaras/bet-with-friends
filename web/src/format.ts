@@ -1,17 +1,16 @@
-const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-
-export function formatMoney(cents: number): string {
-  return money.format(cents / 100).replace(/\.00$/, '');
+export function formatPoints(points: number): string {
+  return `${points.toLocaleString()} ${points === 1 ? 'pt' : 'pts'}`;
 }
 
-export function formatSignedMoney(cents: number): string {
-  if (cents === 0) return '$0';
-  return (cents > 0 ? '+' : '−') + formatMoney(Math.abs(cents));
+export function formatSignedPoints(points: number): string {
+  if (points === 0) return '0';
+  return (points > 0 ? '+' : '−') + Math.abs(points).toLocaleString();
 }
 
-// The API stores UTC timestamps as "YYYY-MM-DD HH:MM:SS".
+// Postgres sends ISO timestamps with microseconds ("2026-10-23T01:50:45.123456+00:00").
+// Trim to milliseconds, which every browser parses.
 export function parseTimestamp(ts: string): Date {
-  return new Date(ts.replace(' ', 'T') + 'Z');
+  return new Date(ts.replace(/(\.\d{3})\d+/, '$1'));
 }
 
 export function timeAgo(ts: string): string {

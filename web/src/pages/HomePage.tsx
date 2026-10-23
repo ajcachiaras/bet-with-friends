@@ -16,7 +16,6 @@ export function HomePage() {
   const live = bets.data.bets.filter(
     (b) => !b.todo && ['proposed', 'active', 'reported', 'disputed'].includes(b.status),
   );
-  const unpaid = bets.data.bets.filter((b) => !b.todo && b.status === 'settled' && b.winnerId && !b.paidAt);
 
   return (
     <>
@@ -36,16 +35,6 @@ export function HomePage() {
         <Section title="Live bets">
           <div className="stack">
             {live.map((b) => (
-              <BetCard key={b.id} bet={b} meId={me.id} showGroup />
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {unpaid.length > 0 && (
-        <Section title="Waiting on payment">
-          <div className="stack">
-            {unpaid.map((b) => (
               <BetCard key={b.id} bet={b} meId={me.id} showGroup />
             ))}
           </div>
