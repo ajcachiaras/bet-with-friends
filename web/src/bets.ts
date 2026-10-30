@@ -81,6 +81,41 @@ export function isEven(b: Pick<Bet, 'creatorPoints' | 'opponentPoints'>): boolea
   return b.creatorPoints === b.opponentPoints;
 }
 
+// ---------- Choosing stakes (the new-bet wheels) ----------
+
+export const MAX_STAKE = 1000;
+
+function steps(from: number, to: number, by: number): number[] {
+  const out: number[] = [];
+  for (let n = from; n <= to; n += by) out.push(n);
+  return out;
+}
+
+// Every point up to 20, then coarser steps up to the 1,000 the database allows.
+export const STAKE_OPTIONS: number[] = [...steps(1, 20, 1), ...steps(25, 100, 5), ...steps(110, 200, 10), ...steps(250, MAX_STAKE, 50)];
+
+// "5 to 1": they put up 5 for every 1 you put up (your side is the long shot).
+// "1 to 5": you put up 5 for every 1 of theirs (your side is the favorite).
+export type Odds = { label: string; theirs: number; yours: number };
+
+export const ODDS_OPTIONS: Odds[] = [
+  ...[10, 9, 8, 7, 6, 5, 4, 3, 2].map((n) => ({ label: `1 to ${n}`, theirs: 1, yours: n })),
+  { label: '2 to 3', theirs: 2, yours: 3 },
+  { label: 'Even', theirs: 1, yours: 1 },
+  { label: '3 to 2', theirs: 3, yours: 2 },
+  ...[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => ({ label: `${n} to 1`, theirs: n, yours: 1 })),
+];
+
+export const EVEN_ODDS_INDEX = ODDS_OPTIONS.findIndex((o) => o.label === 'Even');
+
+// What the other side puts up at these odds, in whole points within 1-1,000.
+// `exact` is false when rounding or the limits changed the ratio.
+export function theirStake(mine: number, odds: Odds): { points: number; exact: boolean } {
+  const raw = (mine * odds.theirs) / odds.yours;
+  const points = Math.min(MAX_STAKE, Math.max(1, Math.round(raw)));
+  return { points, exact: points === raw };
+}
+
 // Points this settled bet moved for a user: plus the loser's stake for the
 // winner, minus their own stake for the loser, null for anyone else.
 export function netFor(b: Bet, userId: string): number | null {

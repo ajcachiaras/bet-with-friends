@@ -48,7 +48,7 @@ export function GroupPage() {
 
       {tab === 'bets' && <BetsTab data={data} meId={me.id} />}
       {tab === 'leaderboard' && <LeaderboardTab data={data} meId={me.id} />}
-      {tab === 'members' && <MembersTab data={data} />}
+      {tab === 'members' && <MembersTab data={data} meId={me.id} />}
     </>
   );
 }
@@ -128,22 +128,36 @@ function LeaderboardTab({ data, meId }: { data: GroupDetail; meId: string }) {
             </div>
           </div>
           <span className={`net ${row.net > 0 ? 'won' : row.net < 0 ? 'lost' : ''}`}>{formatSignedPoints(row.net)}</span>
+          <BetButton groupId={data.group.id} userId={row.user.id} meId={meId} />
         </div>
       ))}
     </div>
   );
 }
 
-function MembersTab({ data }: { data: GroupDetail }) {
+function MembersTab({ data, meId }: { data: GroupDetail; meId: string }) {
   return (
     <div className="card list">
       {data.members.map((u) => (
         <div key={u.id} className="list-row">
           <Avatar user={u} size={32} />
-          <div className="grow">{u.displayName}</div>
-          {u.id === data.group.createdBy && <span className="muted small">Started the group</span>}
+          <div className="grow">
+            <div>{u.displayName}</div>
+            {u.id === data.group.createdBy && <div className="muted small">Started the group</div>}
+          </div>
+          <BetButton groupId={data.group.id} userId={u.id} meId={meId} />
         </div>
       ))}
     </div>
+  );
+}
+
+// Starts a bet against this person, skipping straight to "what's the bet?".
+function BetButton({ groupId, userId, meId }: { groupId: number; userId: string; meId: string }) {
+  if (userId === meId) return null;
+  return (
+    <Link to={`/groups/${groupId}/new?vs=${userId}`} className="btn bet-btn">
+      Bet
+    </Link>
   );
 }

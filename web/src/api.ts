@@ -260,6 +260,13 @@ export const api = {
     };
   },
 
+  async groupMembers(id: number): Promise<{ members: User[] }> {
+    const rows = await run<{ user_id: string; profile: ProfileRow | null }[]>(
+      supabase.from('group_members').select('user_id, profile:profiles(id, display_name)').eq('group_id', id).order('joined_at'),
+    );
+    return { members: rows.map((m) => toUser(m.profile, m.user_id)) };
+  },
+
   // ---------- Bets ----------
 
   // Bets across all of my groups, newest first.

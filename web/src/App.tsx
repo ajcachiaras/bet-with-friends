@@ -74,6 +74,7 @@ export function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/groups/:id" element={<GroupPage />} />
           <Route path="/groups/:id/new" element={<NewBetPage />} />
+          <Route path="/new" element={<NewBetPage />} />
           <Route path="/bets/:id" element={<BetPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/join/:code" element={<JoinPage />} />

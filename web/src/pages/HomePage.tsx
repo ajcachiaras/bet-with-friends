@@ -80,6 +80,15 @@ export function HomePage() {
         )}
         <GroupForms />
       </Section>
+
+      {groups.data.groups.length > 0 && (
+        <>
+          <div className="fab-space" />
+          <Link to="/new" className="fab" aria-label="New bet">
+            +
+          </Link>
+        </>
+      )}
     </>
   );
 }
