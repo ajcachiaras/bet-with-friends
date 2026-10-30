@@ -14,7 +14,7 @@ export type Me = User & { email: string };
 
 export type BetStatus = 'open' | 'proposed' | 'declined' | 'cancelled' | 'active' | 'reported' | 'disputed' | 'settled';
 export type Outcome = 'creator' | 'opponent' | 'push';
-export type BetAction = 'take' | 'accept' | 'decline' | 'cancel' | 'report' | 'confirm' | 'dispute';
+export type BetAction = 'take' | 'accept' | 'counter' | 'decline' | 'cancel' | 'report' | 'confirm' | 'dispute';
 
 export type Bet = {
   id: number;
@@ -31,6 +31,10 @@ export type Bet = {
   status: BetStatus;
   outcome: Outcome | null;
   outcomeReportedBy: string | null;
+  // While status is 'proposed': who made the offer on the table. The other
+  // person answers it (accept, counter or decline).
+  proposedBy: string | null;
+  counters: number;
   createdAt: string;
   acceptedAt: string | null;
   settledAt: string | null;
@@ -63,7 +67,34 @@ export type GroupDetail = {
   bets: Bet[];
 };
 
-export type BetDetail = { bet: Bet; comments: Comment[] };
+// One version of a bet's terms: the original proposal, a counter, or the
+// original going back on the board after a declined counter.
+export type Offer = {
+  id: number;
+  kind: 'proposal' | 'counter' | 'reposted';
+  offeredBy: User;
+  title: string;
+  details: string;
+  creatorSide: string;
+  opponentSide: string;
+  creatorPoints: number;
+  opponentPoints: number;
+  settleBy: string | null;
+  createdAt: string;
+};
+
+export type BetDetail = { bet: Bet; comments: Comment[]; offers: Offer[] };
+
+// Terms from the creator's point of view, as the database stores them.
+export type CreatorTerms = {
+  title: string;
+  details: string;
+  creatorSide: string;
+  opponentSide: string;
+  creatorPoints: number;
+  opponentPoints: number;
+  settleBy: string;
+};
 
 export class ApiError extends Error {}
 
@@ -86,6 +117,8 @@ type BetRow = {
   status: BetStatus;
   outcome: Outcome | null;
   outcome_reported_by: string | null;
+  proposed_by: string | null;
+  counters: number;
   created_at: string;
   accepted_at: string | null;
   settled_at: string | null;
@@ -127,6 +160,8 @@ function toBet(r: BetRow, meId: string): Bet {
     status: r.status,
     outcome: r.outcome,
     outcomeReportedBy: r.outcome_reported_by,
+    proposedBy: r.proposed_by,
+    counters: r.counters,
     settleBy: r.settle_by,
     creatorId: r.creator_id,
     opponentId: r.opponent_id,
@@ -145,6 +180,8 @@ function toBet(r: BetRow, meId: string): Bet {
     status: r.status,
     outcome: r.outcome,
     outcomeReportedBy: r.outcome_reported_by,
+    proposedBy: r.proposed_by,
+    counters: r.counters,
     createdAt: r.created_at,
     acceptedAt: r.accepted_at,
     settledAt: r.settled_at,
@@ -336,7 +373,7 @@ export const api = {
 
   async bet(id: number): Promise<BetDetail> {
     const meId = await myId();
-    const [bet, comments] = await Promise.all([
+    const [bet, comments, offers] = await Promise.all([
       run<BetRow | null>(supabase.from('bets').select(BET_SELECT).eq('id', id).maybeSingle()),
       run<{ id: number; body: string; created_at: string; user_id: string; user: ProfileRow | null }[]>(
         supabase
@@ -346,12 +383,64 @@ export const api = {
           .order('created_at')
           .order('id'),
       ),
+      run<
+        {
+          id: number;
+          kind: Offer['kind'];
+          offered_by: string;
+          title: string;
+          details: string;
+          creator_side: string;
+          opponent_side: string;
+          creator_points: number;
+          opponent_points: number;
+          settle_by: string | null;
+          created_at: string;
+          by: ProfileRow | null;
+        }[]
+      >(
+        // bet_offers has two keys to profiles, so the embed names one.
+        supabase
+          .from('bet_offers')
+          .select('*, by:profiles!bet_offers_offered_by_fkey(id, display_name)')
+          .eq('bet_id', id)
+          .order('id'),
+      ),
     ]);
     if (!bet) throw new ApiError('Bet not found.');
     return {
       bet: toBet(bet, meId),
       comments: comments.map((c) => ({ id: c.id, body: c.body, createdAt: c.created_at, user: toUser(c.user, c.user_id) })),
+      offers: offers.map((o) => ({
+        id: o.id,
+        kind: o.kind,
+        offeredBy: toUser(o.by, o.offered_by),
+        title: o.title,
+        details: o.details,
+        creatorSide: o.creator_side,
+        opponentSide: o.opponent_side,
+        creatorPoints: o.creator_points,
+        opponentPoints: o.opponent_points,
+        settleBy: o.settle_by,
+        createdAt: o.created_at,
+      })),
     };
+  },
+
+  async counterBet(id: number, t: CreatorTerms): Promise<BetDetail> {
+    await run(
+      supabase.rpc('counter_bet', {
+        p_bet_id: id,
+        p_title: t.title,
+        p_creator_side: t.creatorSide,
+        p_opponent_side: t.opponentSide,
+        p_creator_points: t.creatorPoints,
+        p_opponent_points: t.opponentPoints,
+        p_details: t.details,
+        p_settle_by: t.settleBy || null,
+      }),
+    );
+    return api.bet(id);
   },
 
   async betAction(id: number, action: BetAction, body?: { winner: 'me' | 'them' | 'push' }): Promise<BetDetail> {

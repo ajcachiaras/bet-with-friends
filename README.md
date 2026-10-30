@@ -6,6 +6,7 @@ A social app for making friendly bets with your crew and keeping score. Bets are
 - **Bets.** Pick someone in the group, write what the bet is, choose sides, set the points at stake and optionally a "settle by" date.
 - **Open bets.** Or don't pick anyone: put your side up on the group board, and the first member to take the other side is your opponent.
 - **Odds.** Each side can put up a different stake, and the winner collects the loser's. Back a long shot by risking 10 to win 50.
+- **Counters.** Instead of accepting a bet, change anything about it and send it back. The other person can accept, decline or counter again. Countering an open bet takes it off the board while you two work it out; if either of you declines, it goes back up as originally posted.
 - **Results.** Either person reports the result and the other confirms it. Admitting you lost settles the bet straight away, and a disputed result goes back for another report.
 - **Social.** Each bet has a comment thread, each group has a leaderboard (net points and win/loss record), and the home screen shows a "Your move" list of what's waiting on you.
 - **App and notifications.** Add it to your home screen and it opens like an app, even offline. Turn on notifications (Profile) to hear when someone bets you, takes your bet, reports a result or comments. On iPhone, notifications work once it's on the Home Screen (iOS 16.4+).
@@ -54,7 +55,7 @@ web/src/
   pages/              Home, Group, New bet, Bet, Profile, Auth, Join
 ```
 
-Bet lifecycle: `proposed → active → reported → settled`, or `open → active` when someone takes an open bet (plus `declined`, `cancelled`, and `disputed → reported`).
+Bet lifecycle: `proposed → active → reported → settled`, or `open → active` when someone takes an open bet (plus `declined`, `cancelled`, and `disputed → reported`). A counter keeps a bet `proposed` and passes the turn (`proposed_by`); every version of the terms is kept in `bet_offers`.
 
 ## Free-tier note
 

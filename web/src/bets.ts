@@ -8,6 +8,8 @@ type BetFacts = {
   status: BetStatus;
   outcome: Outcome | null;
   outcomeReportedBy: string | null;
+  proposedBy: string | null;
+  counters: number;
   settleBy: string | null;
   creatorId: string;
   opponentId: string | null;
@@ -27,16 +29,21 @@ export function loserOf(b: BetFacts): string | null {
 }
 
 export function allowedActions(b: BetFacts, viewerId: string): BetAction[] {
-  // Open bets sit on the group board: anyone else in the group can take one.
-  if (b.status === 'open') return viewerId === b.creatorId ? ['cancel'] : ['take'];
+  // Open bets sit on the group board: anyone else in the group can take one,
+  // or counter it with different terms.
+  if (b.status === 'open') return viewerId === b.creatorId ? ['cancel'] : ['take', 'counter'];
 
   const isCreator = viewerId === b.creatorId;
   const isOpponent = viewerId === b.opponentId;
   if (!isCreator && !isOpponent) return [];
 
   switch (b.status) {
-    case 'proposed':
-      return isOpponent ? ['accept', 'decline'] : ['cancel'];
+    case 'proposed': {
+      // Whoever didn't make the offer on the table answers it.
+      const myTurn = (b.proposedBy ?? b.creatorId) !== viewerId;
+      if (myTurn) return ['accept', 'counter', 'decline'];
+      return isCreator ? ['cancel'] : [];
+    }
     case 'active':
     case 'disputed':
       return ['report'];
@@ -53,7 +60,8 @@ export function todoFor(b: BetFacts, viewerId: string): string | null {
   const actions = allowedActions(b, viewerId);
   switch (b.status) {
     case 'proposed':
-      return actions.includes('accept') ? 'Accept or decline' : null;
+      if (!actions.includes('accept')) return null;
+      return b.counters > 0 ? 'Answer the counter' : 'Accept, counter or decline';
     case 'active': {
       const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
       return actions.length && b.settleBy && b.settleBy <= today ? 'Report the result' : null;

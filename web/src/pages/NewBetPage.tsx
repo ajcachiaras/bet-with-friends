@@ -2,26 +2,16 @@
 // Reached from the + button on Home (/new), a group page (/groups/:id/new),
 // or a "Bet" button next to a friend (/groups/:id/new?vs=<their id>, which
 // skips to the second screen).
-import { useEffect, useState, type KeyboardEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { api, type User } from '../api';
 import { useMe } from '../auth';
-import { EVEN_ODDS_INDEX, ODDS_OPTIONS, STAKE_OPTIONS, theirStake } from '../bets';
+import { BetTermsFields, useBetTerms } from '../betTerms';
 import { Avatar, ErrorNote, Loading, OpenSeat, useLoad } from '../components';
-import { formatPoints } from '../format';
-import { Wheel } from '../wheel';
 
 // Picking this instead of a member posts the bet to the group board.
 const ANYONE = 'anyone';
 const LAST_GROUP_KEY = 'bwf-last-group';
-
-type SideMode = 'yesno' | 'overunder' | 'custom';
-const MODES: { mode: SideMode; label: string }[] = [
-  { mode: 'yesno', label: 'Yes or no' },
-  { mode: 'overunder', label: 'Over or under' },
-  { mode: 'custom', label: 'Your own sides' },
-];
-const PRESET_SIDES = { yesno: ['Yes', 'No'], overunder: ['Over', 'Under'] } as const;
 
 function lastGroup(): number | null {
   try {
@@ -45,23 +35,12 @@ export function NewBetPage() {
   const routeGroupId = Number(useParams().id) || null;
   const [params] = useSearchParams();
   const groups = useLoad(() => api.groups(), []);
+  const terms = useBetTerms();
 
   const [groupId, setGroupId] = useState<number | null>(routeGroupId);
   const [members, setMembers] = useState<User[] | null>(null);
   const [opponent, setOpponent] = useState<string | null>(params.get('vs'));
   const [step, setStep] = useState(params.get('vs') ? 2 : 1);
-
-  const [title, setTitle] = useState('');
-  const [mode, setMode] = useState<SideMode>('yesno');
-  const [swapped, setSwapped] = useState(false);
-  const [mySide, setMySide] = useState('');
-  const [theirSide, setTheirSide] = useState('');
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [settleBy, setSettleBy] = useState('');
-  const [details, setDetails] = useState('');
-  const [stakeIndex, setStakeIndex] = useState(STAKE_OPTIONS.indexOf(10));
-  const [oddsIndex, setOddsIndex] = useState(EVEN_ODDS_INDEX);
-
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -114,18 +93,6 @@ export function NewBetPage() {
   const others = members.filter((u) => u.id !== me.id);
   const isOpen = opponent === ANYONE;
   const opponentUser = others.find((u) => u.id === opponent);
-  const theirName = isOpen ? 'Whoever takes it' : (opponentUser?.displayName ?? 'They');
-  const sides: [string, string] =
-    mode === 'custom'
-      ? [mySide.trim(), theirSide.trim()]
-      : swapped
-        ? [PRESET_SIDES[mode][1], PRESET_SIDES[mode][0]]
-        : [PRESET_SIDES[mode][0], PRESET_SIDES[mode][1]];
-  // Saved and shown with a capital: "the Jets make it" reads as "The Jets make it".
-  const betText = title.trim().charAt(0).toUpperCase() + title.trim().slice(1);
-  const mine = STAKE_OPTIONS[stakeIndex];
-  const odds = ODDS_OPTIONS[oddsIndex];
-  const theirs = theirStake(mine, odds);
 
   function leave() {
     // React Router counts entries in history.state; 0 means this is the first page.
@@ -151,36 +118,22 @@ export function NewBetPage() {
     setOpponent(null);
   }
 
-  function checkBet(): string | null {
-    if (!title.trim()) return 'Say what the bet is.';
-    if (mode === 'custom' && (!sides[0] || !sides[1])) return 'Fill in both sides.';
-    return null;
-  }
-
-  // Enter closes the keyboard instead of adding a line, so the wheels below
-  // come into view.
-  function doneOnEnter(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      e.currentTarget.blur();
-    }
-  }
-
   async function send() {
-    const problem = checkBet();
+    const problem = terms.problem();
     setError(problem);
     if (problem) return;
     setBusy(true);
     try {
+      const t = terms.result();
       const { betId } = await api.createBet(group!.id, {
         opponentId: isOpen ? null : opponent,
-        title: betText,
-        creatorSide: sides[0],
-        opponentSide: sides[1],
-        creatorPoints: String(mine),
-        opponentPoints: String(theirs.points),
-        settleBy,
-        details,
+        title: t.title,
+        creatorSide: t.mySide,
+        opponentSide: t.theirSide,
+        creatorPoints: String(t.myPoints),
+        opponentPoints: String(t.theirPoints),
+        settleBy: t.settleBy,
+        details: t.details,
       });
       rememberGroup(group!.id);
       navigate(`/bets/${betId}`, { replace: true });
@@ -261,146 +214,13 @@ export function NewBetPage() {
       {step === 2 && (
         <div className="flow-step" key="what">
           <h1 className="flow-q">What&rsquo;s the bet?</h1>
-          <div className="chips">
-            {MODES.map((m) => (
-              <button
-                type="button"
-                key={m.mode}
-                className={`chip${mode === m.mode ? ' selected' : ''}`}
-                aria-pressed={mode === m.mode}
-                onClick={() => {
-                  setMode(m.mode);
-                  setError(null);
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          <label className="big-field">
-            <span className="big-field-lead">
-              {mode === 'yesno'
-                ? `I bet ${isOpen ? 'anyone' : opponentUser?.displayName} that…`
-                : mode === 'overunder'
-                  ? 'Over or under on…'
-                  : 'What’s it on?'}
-            </span>
-            <textarea
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value.replace(/\n/g, ' '));
-                setError(null);
-              }}
-              onKeyDown={doneOnEnter}
-              rows={2}
-              maxLength={120}
-              enterKeyHint="done"
-              autoFocus
-              placeholder={
-                mode === 'yesno'
-                  ? 'the Jets make the playoffs'
-                  : mode === 'overunder'
-                    ? 'Total points in Chiefs vs Bills, 45.5'
-                    : 'Chiefs vs Bills on Sunday'
-              }
-            />
-          </label>
-
-          {mode === 'custom' ? (
-            <div className="custom-sides">
-              <label>
-                You take
-                <input
-                  value={mySide}
-                  onChange={(e) => {
-                    setMySide(e.target.value);
-                    setError(null);
-                  }}
-                  placeholder="Chiefs win"
-                  maxLength={120}
-                />
-              </label>
-              <label>
-                {isOpen ? 'The other side' : `${theirName} takes`}
-                <input
-                  value={theirSide}
-                  onChange={(e) => {
-                    setTheirSide(e.target.value);
-                    setError(null);
-                  }}
-                  placeholder="Bills win"
-                  maxLength={120}
-                />
-              </label>
-            </div>
-          ) : (
-            <div className="side-picks">
-              <div className="side-pick mine">
-                <span className="muted small">You</span>
-                <strong>{sides[0]}</strong>
-              </div>
-              <button type="button" className="swap" aria-label="Swap sides" onClick={() => setSwapped(!swapped)}>
-                &#8644;
-              </button>
-              <div className="side-pick">
-                <span className="muted small">{theirName}</span>
-                <strong>{sides[1]}</strong>
-              </div>
-            </div>
-          )}
-
-          {moreOpen ? (
-            <div className="more-options">
-              <label>
-                <span>
-                  Settle by <span className="muted">(optional)</span>
-                </span>
-                <input type="date" value={settleBy} onChange={(e) => setSettleBy(e.target.value)} />
-              </label>
-              <label>
-                <span>
-                  Fine print <span className="muted">(optional)</span>
-                </span>
-                <textarea
-                  value={details}
-                  onChange={(e) => setDetails(e.target.value)}
-                  rows={2}
-                  maxLength={1000}
-                  placeholder="Overtime counts."
-                />
-              </label>
-            </div>
-          ) : (
-            <button type="button" className="link-btn" onClick={() => setMoreOpen(true)}>
-              + Deadline or fine print
-            </button>
-          )}
-
-          <div className="wheels">
-            <Wheel
-              label="You put up"
-              options={STAKE_OPTIONS}
-              value={stakeIndex}
-              onChange={setStakeIndex}
-              render={(n) => n.toLocaleString()}
-            />
-            <Wheel label="Odds" options={ODDS_OPTIONS} value={oddsIndex} onChange={setOddsIndex} render={(o) => o.label} />
-          </div>
-
-          <div className="card slip">
-            <div className="slip-line">
-              You risk <strong>{formatPoints(mine)}</strong> to win <strong>{formatPoints(theirs.points)}</strong>.
-            </div>
-            <div className="muted small">
-              {odds.theirs === odds.yours
-                ? 'Even: you both put up the same.'
-                : odds.theirs > odds.yours
-                  ? 'Your side is the long shot, so they put up more.'
-                  : 'Your side is the favorite, so you put up more.'}
-              {!theirs.exact && ' Rounded to whole points.'}
-            </div>
-          </div>
+          <BetTermsFields
+            terms={terms}
+            theirName={isOpen ? 'Whoever takes it' : (opponentUser?.displayName ?? 'They')}
+            isOpen={isOpen}
+            autoFocus
+            onEdit={() => setError(null)}
+          />
 
           {/* Pinned to the bottom so Send stays in reach on short screens. */}
           <div className="flow-send">

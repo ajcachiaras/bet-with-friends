@@ -6,6 +6,7 @@ import { isConfigured } from './config';
 import { OfflineBar } from './notifications';
 import { AuthPage } from './pages/AuthPage';
 import { BetPage } from './pages/BetPage';
+import { CounterPage } from './pages/CounterPage';
 import { GroupPage } from './pages/GroupPage';
 import { HomePage } from './pages/HomePage';
 import { JoinPage } from './pages/JoinPage';
@@ -76,6 +77,7 @@ export function App() {
           <Route path="/groups/:id/new" element={<NewBetPage />} />
           <Route path="/new" element={<NewBetPage />} />
           <Route path="/bets/:id" element={<BetPage />} />
+          <Route path="/bets/:id/counter" element={<CounterPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/join/:code" element={<JoinPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router';
-import { api, type Bet, type BetAction, type BetDetail, type Comment, type User } from '../api';
+import { api, type Bet, type BetAction, type BetDetail, type Comment, type Offer, type User } from '../api';
 import { useMe } from '../auth';
 import { isEven, stakeOf } from '../bets';
 import { Avatar, ErrorNote, Loading, OpenSeat, Section, StatusPill, useLoad } from '../components';
@@ -17,7 +17,7 @@ export function BetPage() {
 
   if (error) return <ErrorNote message={error} />;
   if (!data) return <Loading />;
-  const { bet, comments } = data;
+  const { bet, comments, offers } = data;
 
   const act: Act = async (action, body) => {
     setBusy(true);
@@ -55,8 +55,10 @@ export function BetPage() {
         </p>
       </div>
 
-      <StatusPanel bet={bet} me={me} act={act} busy={busy} />
+      <StatusPanel bet={bet} offers={offers} me={me} act={act} busy={busy} />
       <ErrorNote message={actionError} />
+
+      {offers.length > 1 && <OfferHistory offers={offers} meId={me.id} />}
 
       <Chatter betId={bet.id} comments={comments} onUpdate={setData} />
     </>
@@ -102,17 +104,45 @@ function describeReport(bet: Bet, reporter: User, meId: string): string {
   return `${who} ${verb} ${winner.id === meId ? 'you' : winner.displayName} won.`;
 }
 
-// "You'd put up 50 to win 10." for whoever is about to join the bet.
-function riskLine(bet: Bet) {
+// "You'd put up 50 to win 10." from the viewer's side. Someone looking at an
+// open bet would be taking the opponent's side.
+function riskLine(bet: Bet, meId: string) {
+  const mine = meId === bet.creator.id ? bet.creatorPoints : bet.opponentPoints;
+  const theirs = meId === bet.creator.id ? bet.opponentPoints : bet.creatorPoints;
   return (
     <>
-      You&rsquo;d put up <strong>{formatPoints(bet.opponentPoints)}</strong> to win{' '}
-      <strong>{formatPoints(bet.creatorPoints)}</strong>.
+      You&rsquo;d put up <strong>{formatPoints(mine)}</strong> to win <strong>{formatPoints(theirs)}</strong>.
     </>
   );
 }
 
-function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; busy: boolean }) {
+// What a counter changed, in words: ["the stakes", "the deadline"].
+function changesBetween(before: Offer, after: Offer): string[] {
+  const changed: string[] = [];
+  if (before.title !== after.title) changed.push('the bet');
+  if (before.creatorSide !== after.creatorSide || before.opponentSide !== after.opponentSide) changed.push('the sides');
+  if (before.creatorPoints !== after.creatorPoints || before.opponentPoints !== after.opponentPoints) {
+    changed.push('the stakes');
+  }
+  if (before.settleBy !== after.settleBy) changed.push('the deadline');
+  if (before.details !== after.details) changed.push('the fine print');
+  return changed;
+}
+
+function joinWords(words: string[]): string {
+  if (words.length <= 1) return words[0] ?? '';
+  return `${words.slice(0, -1).join(', ')}${words.length > 2 ? ',' : ''} and ${words[words.length - 1]}`;
+}
+
+function CounterButton({ bet }: { bet: Bet }) {
+  return (
+    <Link to={`/bets/${bet.id}/counter`} className="btn">
+      Counter
+    </Link>
+  );
+}
+
+function StatusPanel({ bet, offers, me, act, busy }: { bet: Bet; offers: Offer[]; me: User; act: Act; busy: boolean }) {
   const can = (a: BetAction) => bet.actions.includes(a);
 
   if (bet.status === 'open') {
@@ -121,11 +151,14 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
         <div className="card panel up-for-grabs">
           <p>
             <strong>{bet.creator.displayName}</strong> is taking <strong>{bet.creatorSide}</strong>. Take the other
-            side, <strong>{bet.opponentSide}</strong>, and it&rsquo;s on. {riskLine(bet)}
+            side, <strong>{bet.opponentSide}</strong>, and it&rsquo;s on. {riskLine(bet, me.id)}
           </p>
-          <button className="btn primary" disabled={busy} onClick={() => act('take')}>
-            Take this bet
-          </button>
+          <div className="button-row">
+            <button className="btn primary" disabled={busy} onClick={() => act('take')}>
+              Take this bet
+            </button>
+            {can('counter') && <CounterButton bet={bet} />}
+          </div>
         </div>
       );
     }
@@ -150,18 +183,32 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
   const other = isCreator ? opponent : bet.creator;
 
   switch (bet.status) {
-    case 'proposed':
+    case 'proposed': {
       if (can('accept')) {
+        const mySide = isCreator ? bet.creatorSide : bet.opponentSide;
+        const latest = offers[offers.length - 1];
+        const previous = offers[offers.length - 2];
+        const changed = bet.counters > 0 && latest && previous ? changesBetween(previous, latest) : [];
         return (
           <div className="card panel">
             <p>
-              <strong>{bet.creator.displayName}</strong> bet you. You&rsquo;d have: <strong>{bet.opponentSide}</strong>.{' '}
-              {riskLine(bet)}
+              {bet.counters > 0 ? (
+                <>
+                  <strong>{other.displayName} countered</strong>
+                  {changed.length > 0 && ` and changed ${joinWords(changed)}`}.{' '}
+                </>
+              ) : (
+                <>
+                  <strong>{other.displayName}</strong> bet you.{' '}
+                </>
+              )}
+              You&rsquo;d have: <strong>{mySide}</strong>. {riskLine(bet, me.id)}
             </p>
             <div className="button-row">
               <button className="btn primary" disabled={busy} onClick={() => act('accept')}>
-                Accept bet
+                Accept
               </button>
+              {can('counter') && <CounterButton bet={bet} />}
               <button className="btn" disabled={busy} onClick={() => act('decline')}>
                 Decline
               </button>
@@ -169,16 +216,32 @@ function StatusPanel({ bet, me, act, busy }: { bet: Bet; me: User; act: Act; bus
           </div>
         );
       }
+      if (!isParticipant) {
+        const proposer = bet.proposedBy === opponent.id ? opponent : bet.creator;
+        const answerer = proposer.id === opponent.id ? bet.creator : opponent;
+        return (
+          <div className="card panel">
+            <p>
+              Waiting for {answerer.displayName} to answer {proposer.displayName}&rsquo;s{' '}
+              {bet.counters > 0 ? 'counter' : 'bet'}.
+            </p>
+          </div>
+        );
+      }
       return (
         <div className="card panel">
-          <p>Waiting for {opponent.displayName} to accept.</p>
+          <p>
+            Waiting for {other.displayName} to answer{bet.counters > 0 ? ' your counter' : ''}. They can accept,
+            counter or decline.
+          </p>
           {can('cancel') && (
             <button className="btn subtle" disabled={busy} onClick={() => act('cancel')}>
-              Cancel bet
+              Call it off
             </button>
           )}
         </div>
       );
+    }
 
     case 'active':
     case 'disputed':
@@ -306,6 +369,38 @@ function ResultPanel({ bet, me }: { bet: Bet; me: User }) {
       </p>
       {settled}
     </div>
+  );
+}
+
+// How the terms got where they are: the original, each counter, and any
+// time a declined counter put an open bet back on the board.
+function OfferHistory({ offers, meId }: { offers: Offer[]; meId: string }) {
+  return (
+    <Section title="Offers">
+      <ol className="offer-history">
+        {offers.map((o, i) => {
+          const who = nameFor(o.offeredBy, meId);
+          const changed = i > 0 && o.kind === 'counter' ? changesBetween(offers[i - 1], o) : [];
+          return (
+            <li key={o.id}>
+              <div>
+                <strong>{who}</strong>{' '}
+                {o.kind === 'proposal'
+                  ? 'proposed it'
+                  : o.kind === 'reposted'
+                    ? 'passed, so it went back on the board'
+                    : changed.length
+                      ? `countered: ${joinWords(changed)}`
+                      : 'countered'}
+              </div>
+              <div className="muted small">
+                {formatStakes(o.creatorPoints, o.opponentPoints)} &middot; {timeAgo(o.createdAt)}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </Section>
   );
 }
 

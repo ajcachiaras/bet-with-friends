@@ -75,7 +75,7 @@ export function statusLabel(bet: Bet): { text: string; tone: 'pending' | 'live' 
     case 'open':
       return { text: 'Up for grabs', tone: 'live' };
     case 'proposed':
-      return { text: 'Waiting to accept', tone: 'pending' };
+      return bet.counters > 0 ? { text: 'Countered', tone: 'pending' } : { text: 'Waiting to accept', tone: 'pending' };
     case 'active':
       return { text: 'Live', tone: 'live' };
     case 'reported':
