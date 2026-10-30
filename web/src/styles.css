@@ -902,8 +902,22 @@ textarea:focus {
   margin: 0;
 }
 
-.flow-next {
+.flow-send {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
   margin-top: auto;
+  padding: 10px 0 max(12px, env(safe-area-inset-bottom));
+  background: var(--bg);
+  box-shadow: 0 -10px 12px -6px var(--bg);
+}
+
+.flow-send .error {
+  margin: 0 0 10px;
+}
+
+.flow-send .btn {
+  margin: 0;
 }
 
 .who-grid {
@@ -1111,13 +1125,8 @@ textarea:focus {
   gap: 4px;
 }
 
-.slip-title {
-  font-weight: 700;
-  font-size: 1.05rem;
-}
-
 .slip-line {
-  margin-top: 4px;
+  font-size: 1.05rem;
 }
 
 /* + button on Home */

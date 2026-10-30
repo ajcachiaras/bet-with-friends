@@ -1,7 +1,7 @@
-// Making a bet, one question per screen: who, what, how much. Reached from
-// the + button on Home (/new), a group page (/groups/:id/new), or a "Bet"
-// button next to a friend (/groups/:id/new?vs=<their id>, which skips to
-// "what").
+// Making a bet in two screens: who, then the bet itself (what and how much).
+// Reached from the + button on Home (/new), a group page (/groups/:id/new),
+// or a "Bet" button next to a friend (/groups/:id/new?vs=<their id>, which
+// skips to the second screen).
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { api, type User } from '../api';
@@ -151,28 +151,26 @@ export function NewBetPage() {
     setOpponent(null);
   }
 
-  function checkWhat(): string | null {
+  function checkBet(): string | null {
     if (!title.trim()) return 'Say what the bet is.';
     if (mode === 'custom' && (!sides[0] || !sides[1])) return 'Fill in both sides.';
     return null;
   }
 
-  function next() {
-    const problem = checkWhat();
-    setError(problem);
-    if (!problem) setStep(3);
-  }
-
-  function nextOnEnter(e: KeyboardEvent) {
+  // Enter closes the keyboard instead of adding a line, so the wheels below
+  // come into view.
+  function doneOnEnter(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      next();
+      e.currentTarget.blur();
     }
   }
 
   async function send() {
+    const problem = checkBet();
+    setError(problem);
+    if (problem) return;
     setBusy(true);
-    setError(null);
     try {
       const { betId } = await api.createBet(group!.id, {
         opponentId: isOpen ? null : opponent,
@@ -198,8 +196,8 @@ export function NewBetPage() {
         <button className="flow-back" onClick={back}>
           &lsaquo; {step === 1 ? 'Cancel' : 'Back'}
         </button>
-        <div className="flow-progress" aria-label={`Step ${step} of 3`}>
-          {[1, 2, 3].map((s) => (
+        <div className="flow-progress" aria-label={`Step ${step} of 2`}>
+          {[1, 2].map((s) => (
             <span key={s} className={s <= step ? 'done' : ''} />
           ))}
         </div>
@@ -290,11 +288,14 @@ export function NewBetPage() {
             </span>
             <textarea
               value={title}
-              onChange={(e) => setTitle(e.target.value.replace(/\n/g, ' '))}
-              onKeyDown={nextOnEnter}
+              onChange={(e) => {
+                setTitle(e.target.value.replace(/\n/g, ' '));
+                setError(null);
+              }}
+              onKeyDown={doneOnEnter}
               rows={2}
               maxLength={120}
-              enterKeyHint="next"
+              enterKeyHint="done"
               autoFocus
               placeholder={
                 mode === 'yesno'
@@ -310,13 +311,24 @@ export function NewBetPage() {
             <div className="custom-sides">
               <label>
                 You take
-                <input value={mySide} onChange={(e) => setMySide(e.target.value)} placeholder="Chiefs win" maxLength={120} />
+                <input
+                  value={mySide}
+                  onChange={(e) => {
+                    setMySide(e.target.value);
+                    setError(null);
+                  }}
+                  placeholder="Chiefs win"
+                  maxLength={120}
+                />
               </label>
               <label>
                 {isOpen ? 'The other side' : `${theirName} takes`}
                 <input
                   value={theirSide}
-                  onChange={(e) => setTheirSide(e.target.value)}
+                  onChange={(e) => {
+                    setTheirSide(e.target.value);
+                    setError(null);
+                  }}
                   placeholder="Bills win"
                   maxLength={120}
                 />
@@ -365,16 +377,6 @@ export function NewBetPage() {
             </button>
           )}
 
-          <ErrorNote message={error} />
-          <button className="btn primary block flow-next" onClick={next}>
-            Next
-          </button>
-        </div>
-      )}
-
-      {step === 3 && (
-        <div className="flow-step" key="stake">
-          <h1 className="flow-q">How much?</h1>
           <div className="wheels">
             <Wheel
               label="You put up"
@@ -387,10 +389,6 @@ export function NewBetPage() {
           </div>
 
           <div className="card slip">
-            <div className="slip-title">{betText}</div>
-            <div className="muted small">
-              You: {sides[0]} &middot; {theirName}: {sides[1]}
-            </div>
             <div className="slip-line">
               You risk <strong>{formatPoints(mine)}</strong> to win <strong>{formatPoints(theirs.points)}</strong>.
             </div>
@@ -404,10 +402,13 @@ export function NewBetPage() {
             </div>
           </div>
 
-          <ErrorNote message={error} />
-          <button className="btn primary block flow-next" disabled={busy} onClick={send}>
-            {isOpen ? 'Put it on the board' : `Send to ${opponentUser?.displayName}`}
-          </button>
+          {/* Pinned to the bottom so Send stays in reach on short screens. */}
+          <div className="flow-send">
+            <ErrorNote message={error} />
+            <button className="btn primary block" disabled={busy} onClick={send}>
+              {isOpen ? 'Put it on the board' : `Send to ${opponentUser?.displayName}`}
+            </button>
+          </div>
         </div>
       )}
     </div>
